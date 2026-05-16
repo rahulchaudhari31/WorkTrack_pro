@@ -155,7 +155,6 @@ const Payments = () => {
                   <th className="pb-3 font-medium text-gray-500">Attendance</th>
                   <th className="pb-3 font-medium text-gray-500">Amount</th>
                   <th className="pb-3 font-medium text-gray-500">Status</th>
-                  <th className="pb-3 font-medium text-gray-500">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -200,13 +199,6 @@ const Payments = () => {
                         <option value="cancelled">Cancelled</option>
                       </select>
                       {pay.paid_at && <p className="text-xs text-gray-400 mt-1">{formatDate(pay.paid_at)}</p>}
-                    </td>
-                    <td className="py-3">
-                      {updateStatus.isLoading ? (
-                        <div className="text-xs text-gray-400">Updating...</div>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
                     </td>
                   </motion.tr>
                 ))}

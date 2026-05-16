@@ -4,12 +4,18 @@ import { useAuth }  from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useNavigate } from 'react-router-dom';
 
+import toast from 'react-hot-toast';
+
 const Navbar = ({ onToggleSidebar }) => {
   const { user, logout } = useAuth();
   const { dark, toggle }  = useTheme();
   const navigate          = useNavigate();
 
   const handleLogout = () => { logout(); navigate('/login'); };
+
+  const handleNotificationClick = () => {
+    toast('No new notifications', { icon: '🔔' });
+  };
 
   return (
     <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200
@@ -33,7 +39,10 @@ const Navbar = ({ onToggleSidebar }) => {
         }
       </button>
 
-      <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 relative">
+      <button 
+        onClick={handleNotificationClick}
+        className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 relative"
+      >
         <Bell className="w-5 h-5 text-gray-600 dark:text-gray-400" />
         <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
       </button>

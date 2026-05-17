@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from 'react-query';
-import { Search, RefreshCw, Users, Phone, Briefcase, IndianRupee } from 'lucide-react';
+import { Search, RefreshCw, Users, Phone, Briefcase, IndianRupee, UserMinus } from 'lucide-react';
 import api from '../services/api';
 
 const statusClass = {
@@ -28,6 +28,11 @@ const Employees = () => {
     { keepPreviousData: true }
   );
 
+  const { data: stats } = useQuery('dashboard-stats', () =>
+    api.get('/dashboard/stats').then(r => r.data.data),
+    { staleTime: 60000 }
+  );
+
   const employees = data?.data || [];
   const total = data?.pagination?.total || employees.length;
 
@@ -49,8 +54,8 @@ const Employees = () => {
               className="input pl-9 sm:w-64"
             />
           </div>
-          <select value={status} onChange={e => setStatus(e.target.value)} className="input sm:w-40">
-            <option value="">All status</option>
+          <select value={status} onChange={e => setStatus(e.target.value)} className="input sm:w-48">
+            <option value="">All Employment Status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
             <option value="on_leave">On leave</option>
@@ -63,7 +68,7 @@ const Employees = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card flex items-center gap-3">
           <div className="p-3 rounded-lg bg-primary-600">
             <Users className="w-5 h-5 text-white" />
@@ -81,6 +86,17 @@ const Employees = () => {
             <p className="text-sm text-gray-500">Active Shown</p>
             <p className="text-2xl font-bold text-gray-900 dark:text-white">
               {employees.filter(emp => emp.status === 'active').length}
+            </p>
+          </div>
+        </div>
+        <div className="card flex items-center gap-3">
+          <div className="p-3 rounded-lg bg-orange-500">
+            <UserMinus className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">On Leave Today</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">
+              {stats?.attendance_today?.on_leave_count || 0}
             </p>
           </div>
         </div>
@@ -116,7 +132,7 @@ const Employees = () => {
                   <th className="pb-3 font-medium text-gray-500">Department</th>
                   <th className="pb-3 font-medium text-gray-500">Designation</th>
                   <th className="pb-3 font-medium text-gray-500">Wage</th>
-                  <th className="pb-3 font-medium text-gray-500">Status</th>
+                  <th className="pb-3 font-medium text-gray-500">Employment</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">

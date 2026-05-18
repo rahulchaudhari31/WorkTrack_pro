@@ -12,17 +12,22 @@ import { format } from 'date-fns';
 import api from '../services/api';
 
 const COLORS = ['#22c55e', '#ef4444', '#f59e0b', '#3b82f6', '#6366f1'];
-const PAYMENT_BARS = [
-  { key: 'daily', label: 'Daily', color: '#22c55e' },
-  { key: 'weekly', label: 'Weekly', color: '#6366f1' },
-  { key: 'monthly', label: 'Monthly', color: '#14b8a6' },
-  { key: 'advance', label: 'Advance', color: '#f97316' },
-  { key: 'bonus', label: 'Bonus', color: '#eab308' },
-  { key: 'deduction', label: 'Deduction', color: '#ef4444' },
+const DEPT_COLORS = [
+  '#22c55e', '#3b82f6', '#f97316', '#a855f7', '#ef4444',
+  '#facc15', '#14b8a6', '#6366f1', '#ec4899', '#84cc16',
+];
+const DEPT_AMOUNT_KEYS = [
+  'total', 'estimated_salary', 'total_payments', 'paid', 'pending',
+  'payment_count', 'daily', 'weekly', 'monthly', 'advance', 'bonus', 'deduction',
 ];
 
 const formatCurrency = (value) =>
   `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+
+const normalizeDeptSalary = (rows = []) => rows.map(row => ({
+  ...row,
+  ...Object.fromEntries(DEPT_AMOUNT_KEYS.map(key => [key, Number(row[key] || 0)])),
+}));
 
 const downloadCsv = (filename, rows) => {
   if (!rows.length) return;
@@ -84,7 +89,7 @@ const Reports = () => {
   );
   const deptSalaryQuery = useQuery(
     'report-dept-salary',
-    () => api.get('/dashboard/salary-by-dept').then(r => r.data.data),
+    () => api.get('/dashboard/salary-by-dept').then(r => normalizeDeptSalary(r.data.data)),
     liveOptions
   );
 
@@ -94,6 +99,7 @@ const Reports = () => {
   const attendance = attendanceQuery.data || [];
   const deptSalary = deptSalaryQuery.data || [];
   const att = stats.attendance_today || {};
+  const deptChartHeight = Math.max(280, deptSalary.length * 44);
 
   const attendancePie = useMemo(() => ([
     { name: 'Present', value: Number(att.present_count || 0) },
@@ -116,6 +122,8 @@ const Reports = () => {
   const paymentRows = Object.values(paymentSummary);
   const activeEmployees = employees.filter(emp => emp.status === 'active').length;
   const totalPayroll = payments.reduce((sum, pay) => sum + Number(pay.net_amount || 0), 0);
+  const pendingDecisionCount = (paymentSummary.pending?.count || 0) + (paymentSummary.paid?.count || 0);
+  const pendingDecisionTotal = Number(paymentSummary.pending?.total || 0) + Number(paymentSummary.paid?.total || 0);
   const isFetching = statsQuery.isFetching || employeesQuery.isFetching || paymentsQuery.isFetching ||
     attendanceQuery.isFetching || deptSalaryQuery.isFetching;
 
@@ -156,7 +164,7 @@ const Reports = () => {
         <StatCard label="Active Employees" value={activeEmployees} icon={Users} color="bg-primary-600" sub={`${employees.length} total records`} />
         <StatCard label="Present Today" value={att.present_count || 0} icon={CalendarDays} color="bg-green-500" sub={`${att.absent_count || 0} absent`} />
         <StatCard label="Payroll Records" value={payments.length} icon={IndianRupee} color="bg-indigo-500" sub={formatCurrency(totalPayroll)} />
-        <StatCard label="Pending Payments" value={paymentSummary.pending?.count || 0} icon={AlertCircle} color="bg-orange-500" sub={formatCurrency(paymentSummary.pending?.total || 0)} />
+        <StatCard label="Pending Payments" value={pendingDecisionCount} icon={AlertCircle} color="bg-orange-500" sub={formatCurrency(pendingDecisionTotal)} />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -190,28 +198,24 @@ const Reports = () => {
             <h3 className="font-semibold text-gray-900 dark:text-white">Department Payroll</h3>
             <BarChart3 className="w-5 h-5 text-gray-400" />
           </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={deptSalary} layout="vertical">
+          <ResponsiveContainer width="100%" height={deptChartHeight}>
+            <BarChart data={deptSalary} layout="vertical" margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
-              <YAxis dataKey="department" type="category" tick={{ fontSize: 12 }} width={100} />
+              <YAxis dataKey="department" type="category" interval={0} tick={{ fontSize: 12 }} width={120} />
               <Tooltip formatter={v => formatCurrency(v)} />
-              {PAYMENT_BARS.map(bar => (
-                <Bar
-                  key={bar.key}
-                  dataKey={bar.key}
-                  stackId="payments"
-                  fill={bar.color}
-                  name={bar.label}
-                />
-              ))}
+              <Bar dataKey="total" name="Total Salary" radius={[8, 8, 8, 8]} barSize={20}>
+                {deptSalary.map((entry, index) => (
+                  <Cell key={`cell-${entry.department}-${index}`} fill={DEPT_COLORS[index % DEPT_COLORS.length]} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
           <div className="flex flex-wrap gap-3 mt-3">
-            {PAYMENT_BARS.map(bar => (
-              <span key={bar.key} className="text-xs text-gray-500">
-                <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: bar.color }} />
-                {bar.label}
+            {deptSalary.map((row, index) => (
+              <span key={`legend-${row.department}`} className="text-xs text-gray-500">
+                <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: DEPT_COLORS[index % DEPT_COLORS.length] }} />
+                {row.department}
               </span>
             ))}
           </div>

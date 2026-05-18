@@ -7,18 +7,23 @@ exports.getAttendance = async (req, res, next) => {
     const params = [date];
     let   where  = 'AND a.attendance_date = ?';
 
-    if (dept_id) { where += ' AND e.department_id = ?'; params.push(dept_id); }
+    if (dept_id) {
+      where += ' AND (e.department_id = ? OR CAST(d.id AS CHAR) = CAST(? AS CHAR) OR d.name = ?)';
+      params.push(dept_id, dept_id, dept_id);
+    }
     if (status)  { where += ' AND a.status = ?';        params.push(status); }
 
     const [rows] = await db.execute(
       `SELECT
          e.id AS employee_id, e.employee_code, e.full_name, e.profile_photo,
-         d.name AS department_name,
+         COALESCE(d.name, e.department_id) AS department_name,
          COALESCE(a.id, NULL)          AS attendance_id,
          COALESCE(a.status, 'absent') AS status,
          a.time_in, a.time_out, a.late_minutes, a.overtime_hours, a.remarks
       FROM employees e
-      LEFT JOIN departments d ON d.id = e.department_id
+      LEFT JOIN departments d
+        ON d.name = e.department_id
+        OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
       LEFT JOIN attendance a ON a.employee_id = e.id ${where}
        WHERE e.status = 'active'
        ORDER BY e.full_name`,

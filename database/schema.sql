@@ -145,7 +145,7 @@ CREATE TABLE payments (
   advance_deduction DECIMAL(12,2) DEFAULT 0.00,
   net_amount        DECIMAL(12,2) NOT NULL,
   payment_method    ENUM('cash','bank_transfer','upi','cheque') NOT NULL DEFAULT 'cash',
-  payment_status    ENUM('pending','paid','failed','cancelled') DEFAULT 'pending',
+  payment_status    ENUM('pending','paid','failed','cancelled','done') DEFAULT 'pending',
   paid_at           TIMESTAMP NULL,
   transaction_ref   VARCHAR(100),
   notes             TEXT,

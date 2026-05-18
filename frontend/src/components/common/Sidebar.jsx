@@ -24,7 +24,7 @@ const Sidebar = ({ open, onClose }) => {
         {open && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-20 lg:hidden"
+            className="fixed inset-x-0 top-16 bottom-0 bg-black/50 z-20 lg:hidden"
             onClick={onClose}
           />
         )}

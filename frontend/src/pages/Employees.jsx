@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { useQuery } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { Search, RefreshCw, Users, Phone, Briefcase, IndianRupee, UserMinus } from 'lucide-react';
+import toast from 'react-hot-toast';
 import api from '../services/api';
 
 const statusClass = {
@@ -11,9 +12,17 @@ const statusClass = {
   terminated: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
 };
 
+const employmentStatusOptions = [
+  { value: 'active', label: 'Active' },
+  { value: 'inactive', label: 'Inactive' },
+  { value: 'on_leave', label: 'On leave' },
+  { value: 'terminated', label: 'Terminated' },
+];
+
 const Employees = () => {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const qc = useQueryClient();
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ limit: '50' });
@@ -31,6 +40,22 @@ const Employees = () => {
   const { data: stats } = useQuery('dashboard-stats', () =>
     api.get('/dashboard/stats').then(r => r.data.data),
     { staleTime: 60000 }
+  );
+
+  const updateStatus = useMutation(
+    ({ employeeId, newStatus }) => api.patch(`/employees/${employeeId}/status`, { status: newStatus }),
+    {
+      onSuccess: () => {
+        toast.success('Employment status updated');
+        qc.invalidateQueries('employees');
+        qc.invalidateQueries('dashboard-stats');
+        qc.invalidateQueries('monthly-attendance');
+        qc.invalidateQueries('dept-salary');
+      },
+      onError: (err) => {
+        toast.error(err.response?.data?.message || 'Failed to update employment status');
+      },
+    }
   );
 
   const employees = data?.data || [];
@@ -167,9 +192,18 @@ const Employees = () => {
                       <span className="text-xs text-gray-400"> / day</span>
                     </td>
                     <td className="py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusClass[emp.status] || statusClass.inactive}`}>
-                        {emp.status?.replace('_', ' ')}
-                      </span>
+                      <select
+                        value={emp.status || 'inactive'}
+                        onChange={(e) => updateStatus.mutate({ employeeId: emp.id, newStatus: e.target.value })}
+                        disabled={updateStatus.isLoading}
+                        className={`text-xs px-2 py-1 rounded-full font-medium border-0 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer transition capitalize ${statusClass[emp.status] || statusClass.inactive}`}
+                      >
+                        {employmentStatusOptions.map(option => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                   </motion.tr>
                 ))}

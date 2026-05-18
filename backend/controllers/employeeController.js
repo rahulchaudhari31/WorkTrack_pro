@@ -21,16 +21,21 @@ exports.getEmployees = async (req, res, next) => {
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
     if (status)      { where += ' AND e.status = ?';       params.push(status); }
-    if (dept_id)     { where += ' AND e.department_id = ?'; params.push(dept_id); }
+    if (dept_id) {
+      where += ' AND (e.department_id = ? OR CAST(d.id AS CHAR) = CAST(? AS CHAR) OR d.name = ?)';
+      params.push(dept_id, dept_id, dept_id);
+    }
     if (salary_type) { where += ' AND e.salary_type = ?';  params.push(salary_type); }
 
     const [rows] = await db.execute(
       `SELECT e.id, e.employee_code, e.full_name, e.mobile_number, e.designation,
               e.salary_type, e.daily_wage, e.monthly_salary, e.status,
               e.joining_date, e.profile_photo, e.worker_category,
-              d.name AS department_name
+              COALESCE(d.name, e.department_id) AS department_name
       FROM employees e
-      LEFT JOIN departments d ON d.id = e.department_id
+      LEFT JOIN departments d
+        ON d.name = e.department_id
+        OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
        ${where}
        ORDER BY e.created_at DESC
        LIMIT ${parseInt(limit)} OFFSET ${offset}`,
@@ -38,7 +43,13 @@ exports.getEmployees = async (req, res, next) => {
     );
 
     const [countRows] = await db.execute(
-      `SELECT COUNT(*) AS total FROM employees e ${where}`, params
+      `SELECT COUNT(*) AS total
+       FROM employees e
+       LEFT JOIN departments d
+         ON d.name = e.department_id
+         OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
+       ${where}`,
+      params
     );
 
     res.json({
@@ -58,9 +69,11 @@ exports.getEmployees = async (req, res, next) => {
 exports.getEmployee = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
-      `SELECT e.*, d.name AS department_name
+      `SELECT e.*, COALESCE(d.name, e.department_id) AS department_name
        FROM employees e
-       LEFT JOIN departments d ON d.id = e.department_id
+       LEFT JOIN departments d
+         ON d.name = e.department_id
+         OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
        WHERE e.id = ?`,
       [req.params.id]
     );
@@ -135,6 +148,49 @@ exports.updateEmployee = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// PATCH /api/employees/:id/status
+exports.updateEmployeeStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['active', 'inactive', 'on_leave', 'terminated'];
+
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    const leavingDateSql = status === 'terminated'
+      ? ', leaving_date = COALESCE(leaving_date, CURDATE())'
+      : ', leaving_date = NULL';
+
+    await db.execute(
+      `UPDATE employees SET status = ?${leavingDateSql} WHERE id = ?`,
+      [status, req.params.id]
+    );
+
+    const [updated] = await db.execute(
+      `SELECT e.id, e.employee_code, e.full_name, e.mobile_number, e.designation,
+              e.salary_type, e.daily_wage, e.monthly_salary, e.status,
+              e.joining_date, e.profile_photo, e.worker_category,
+              COALESCE(d.name, e.department_id) AS department_name
+       FROM employees e
+       LEFT JOIN departments d
+         ON d.name = e.department_id
+         OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
+       WHERE e.id = ?`,
+      [req.params.id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Employment status updated',
+      data: updated[0],
+    });
+  } catch (err) { next(err); }
+};
+
 // DELETE /api/employees/:id  (soft delete)
 exports.deleteEmployee = async (req, res, next) => {
   try {
@@ -149,7 +205,29 @@ exports.deleteEmployee = async (req, res, next) => {
 // GET /api/employees/departments
 exports.getDepartments = async (req, res, next) => {
   try {
-    const [rows] = await db.execute('SELECT * FROM departments ORDER BY name');
+    const [rows] = await db.execute(
+      `SELECT *
+       FROM (
+         SELECT id, name, description, created_at, updated_at
+         FROM departments
+         UNION
+         SELECT
+           NULL AS id,
+           e.department_id AS name,
+           NULL AS description,
+           NULL AS created_at,
+           NULL AS updated_at
+         FROM employees e
+         LEFT JOIN departments d
+           ON d.name = e.department_id
+           OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
+         WHERE e.department_id IS NOT NULL
+           AND e.department_id <> ''
+           AND d.id IS NULL
+         GROUP BY e.department_id
+       ) dept
+       ORDER BY name`
+    );
     res.json({ success: true, data: rows });
   } catch (err) { next(err); }
 };

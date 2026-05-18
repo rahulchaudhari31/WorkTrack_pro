@@ -8,7 +8,7 @@ router.get('/',                             ctrl.getPayments);
 router.get('/pending-summary',              ctrl.getPendingSummary);
 router.post('/calculate',                   ctrl.calculatePayment);
 router.post('/',                roleCheck('admin','manager'), ctrl.createPayment);
-router.patch('/:id/mark-paid',   roleCheck('admin','manager'), ctrl.markPaid);
-router.patch('/:id/status',      roleCheck('admin','manager'), ctrl.updatePaymentStatus);
+router.patch('/:id/mark-paid',   roleCheck('admin'), ctrl.markPaid);
+router.patch('/:id/status',      roleCheck('admin'), ctrl.updatePaymentStatus);
 
 module.exports = router;

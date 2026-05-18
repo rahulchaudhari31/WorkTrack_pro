@@ -8,19 +8,24 @@ import {
 import {
   AreaChart, Area, BarChart, Bar,
   CartesianGrid, XAxis, YAxis, Tooltip,
-  ResponsiveContainer
+  ResponsiveContainer, Cell
 } from 'recharts';
 import api from '../services/api';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const PAYMENT_BARS = [
-  { key: 'daily', label: 'Daily', color: '#22c55e' },
-  { key: 'weekly', label: 'Weekly', color: '#6366f1' },
-  { key: 'monthly', label: 'Monthly', color: '#14b8a6' },
-  { key: 'advance', label: 'Advance', color: '#f97316' },
-  { key: 'bonus', label: 'Bonus', color: '#eab308' },
-  { key: 'deduction', label: 'Deduction', color: '#ef4444' },
+const DEPT_COLORS = [
+  '#22c55e', '#3b82f6', '#f97316', '#a855f7', '#ef4444',
+  '#facc15', '#14b8a6', '#6366f1', '#ec4899', '#84cc16',
 ];
+const DEPT_AMOUNT_KEYS = [
+  'total', 'estimated_salary', 'total_payments', 'paid', 'pending',
+  'payment_count', 'daily', 'weekly', 'monthly', 'advance', 'bonus', 'deduction',
+];
+
+const normalizeDeptSalary = (rows = []) => rows.map(row => ({
+  ...row,
+  ...Object.fromEntries(DEPT_AMOUNT_KEYS.map(key => [key, Number(row[key] || 0)])),
+}));
 
 const StatCard = ({ label, value, icon: Icon, color, sub }) => (
   <motion.div
@@ -42,7 +47,7 @@ const Dashboard = () => {
   const liveOptions = {
     staleTime: 0,
     refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
     refetchInterval: 5000,
   };
   const {
@@ -68,12 +73,16 @@ const Dashboard = () => {
     refetch: refetchDeptSalary,
     isFetching: fetchingDeptSalary,
   } = useQuery('dept-salary', () =>
-    api.get('/dashboard/salary-by-dept').then(r => r.data.data),
+    api.get('/dashboard/salary-by-dept').then(r => normalizeDeptSalary(r.data.data)),
     liveOptions
   );
 
   const att = stats?.attendance_today || {};
   const isRefreshing = fetchingStats || fetchingMonthly || fetchingDeptSalary;
+  const deptRows = deptSalary || [];
+  const deptChartHeight = Math.max(260, deptRows.length * 44);
+  const monthlyChartKey = `monthly-${monthly?.length || 0}-${monthly?.map(row => `${row.name}:${row.present}:${row.absent}:${row.half_day}`).join('|') || 'empty'}`;
+  const deptChartKey = `dept-${deptRows.length}-${deptRows.map(row => `${row.department}:${row.total}`).join('|')}`;
   const refreshDashboard = () => {
     refetchStats();
     refetchMonthly();
@@ -116,49 +125,49 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="card">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Monthly Attendance</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={monthly || []}>
-              <defs>
-                <linearGradient id="gPresent" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#4f46e5" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip />
-              <Area type="monotone" dataKey="present"  stroke="#4f46e5" fill="url(#gPresent)" name="Present" />
-              <Area type="monotone" dataKey="absent"   stroke="#ef4444" fill="none"          name="Absent" />
-              <Area type="monotone" dataKey="half_day" stroke="#f59e0b" fill="none"          name="Half Day" />
-            </AreaChart>
-          </ResponsiveContainer>
+          <div className="h-[240px] min-w-0">
+            <ResponsiveContainer key={monthlyChartKey} width="100%" height="100%">
+              <AreaChart data={monthly || []}>
+                <defs>
+                  <linearGradient id="gPresent" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#4f46e5" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
+                <Tooltip />
+                <Area type="monotone" dataKey="present"  stroke="#4f46e5" fill="url(#gPresent)" name="Present" />
+                <Area type="monotone" dataKey="absent"   stroke="#ef4444" fill="none"          name="Absent" />
+                <Area type="monotone" dataKey="half_day" stroke="#f59e0b" fill="none"          name="Half Day" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="card">
           <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Salary by Department</h3>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={deptSalary || []} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
-              <YAxis dataKey="department" type="category" tick={{ fontSize: 12 }} width={90} />
-              <Tooltip formatter={v => `₹${Number(v).toLocaleString('en-IN')}`} />
-              {PAYMENT_BARS.map(bar => (
-                <Bar
-                  key={bar.key}
-                  dataKey={bar.key}
-                  stackId="payments"
-                  fill={bar.color}
-                  name={bar.label}
-                />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+          <div style={{ height: deptChartHeight }} className="min-w-0">
+            <ResponsiveContainer key={deptChartKey} width="100%" height="100%">
+              <BarChart data={deptRows} layout="vertical" margin={{ top: 4, right: 12, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `₹${(v/1000).toFixed(0)}k`} />
+                <YAxis dataKey="department" type="category" interval={0} tick={{ fontSize: 12 }} width={120} />
+                <Tooltip formatter={v => `₹${Number(v).toLocaleString('en-IN')}`} />
+                <Bar dataKey="total" name="Total Salary" radius={[8, 8, 8, 8]} barSize={20}>
+                  {deptRows.map((entry, index) => (
+                    <Cell key={`cell-${entry.department}-${index}`} fill={DEPT_COLORS[index % DEPT_COLORS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
           <div className="flex flex-wrap gap-3 mt-3">
-            {PAYMENT_BARS.map(bar => (
-              <span key={bar.key} className="text-xs text-gray-500">
-                <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: bar.color }} />
-                {bar.label}
+            {deptRows.map((row, index) => (
+              <span key={`legend-${row.department}`} className="text-xs text-gray-500">
+                <span className="inline-block w-2 h-2 rounded-full mr-1" style={{ backgroundColor: DEPT_COLORS[index % DEPT_COLORS.length] }} />
+                {row.department}
               </span>
             ))}
           </div>

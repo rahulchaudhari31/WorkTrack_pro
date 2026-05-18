@@ -3,19 +3,27 @@ const db = require('../config/db');
 // GET /api/payments — list all payments
 exports.getPayments = async (req, res, next) => {
   try {
-    const { page=1, limit=10, status='', employee_id='', period='' } = req.query;
+    const { page=1, limit=10, status='', employee_id='', period='', department_id='' } = req.query;
     const offset = (parseInt(page)-1)*parseInt(limit);
     const params = [];
     let where = 'WHERE 1=1';
 
-    if (status)      { where += ' AND p.payment_status=?'; params.push(status); }
-    if (employee_id) { where += ' AND p.employee_id=?';    params.push(employee_id); }
-    if (period)      { where += ' AND p.payment_period=?'; params.push(period); }
+    if (status)        { where += ' AND p.payment_status=?'; params.push(status); }
+    if (employee_id)   { where += ' AND p.employee_id=?';    params.push(employee_id); }
+    if (period)        { where += ' AND p.payment_period=?'; params.push(period); }
+    if (department_id) {
+      where += ' AND (e.department_id=? OR CAST(d.id AS CHAR)=CAST(? AS CHAR) OR d.name=?)';
+      params.push(department_id, department_id, department_id);
+    }
 
     const [rows] = await db.execute(
-      `SELECT p.*, e.full_name, e.employee_code, e.daily_wage
+      `SELECT p.*, e.full_name, e.employee_code, e.daily_wage, e.department_id,
+              COALESCE(d.name, e.department_id) AS department_name
        FROM payments p
        JOIN employees e ON e.id = p.employee_id
+       LEFT JOIN departments d
+         ON d.name = e.department_id
+         OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
        ${where}
        ORDER BY p.created_at DESC
        LIMIT ${parseInt(limit)} OFFSET ${offset}`,
@@ -24,7 +32,12 @@ exports.getPayments = async (req, res, next) => {
 
     const [cnt] = await db.execute(
       `SELECT COUNT(*) AS total, SUM(net_amount) AS total_amount
-       FROM payments p ${where}`, params
+       FROM payments p
+       JOIN employees e ON e.id = p.employee_id
+       LEFT JOIN departments d
+         ON d.name = e.department_id
+         OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
+       ${where}`, params
     );
 
     res.json({ success: true, data: rows, pagination: {
@@ -143,7 +156,7 @@ exports.markPaid = async (req, res, next) => {
 exports.updatePaymentStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['pending', 'paid', 'failed', 'cancelled'];
+    const validStatuses = ['paid', 'done'];
     
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({ 
@@ -152,16 +165,11 @@ exports.updatePaymentStatus = async (req, res, next) => {
       });
     }
 
-    const updateFields = { payment_status: status };
     let query = 'UPDATE payments SET payment_status=?';
     const params = [status];
 
-    if (status === 'paid') {
-      query += ', paid_at=NOW(), paid_by=?';
-      params.push(req.user.id);
-    } else if (status !== 'paid') {
-      query += ', paid_at=NULL, paid_by=NULL';
-    }
+    query += ', paid_at=COALESCE(paid_at, NOW()), paid_by=COALESCE(paid_by, ?)';
+    params.push(req.user.id);
 
     query += ' WHERE id=?';
     params.push(req.params.id);
@@ -182,7 +190,7 @@ exports.getPendingSummary = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
       `SELECT COUNT(*) AS count, COALESCE(SUM(net_amount),0) AS total
-       FROM payments WHERE payment_status='pending'`
+       FROM payments WHERE payment_status IN ('pending','paid')`
     );
     res.json({ success: true, data: rows[0] });
   } catch (err) { next(err); }

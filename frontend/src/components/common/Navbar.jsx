@@ -19,7 +19,7 @@ const Navbar = ({ onToggleSidebar }) => {
 
   return (
     <header className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200
-                       dark:border-gray-800 flex items-center px-4 gap-3 z-10 sticky top-0">
+                       dark:border-gray-800 flex items-center px-4 gap-3 z-40 sticky top-0">
       <button
         onClick={onToggleSidebar}
         className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

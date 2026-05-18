@@ -4,13 +4,28 @@ import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { CheckCircle2, Clock, CreditCard, IndianRupee, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const statusClass = {
   paid: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+  done: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
   pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
   failed: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
   cancelled: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 };
+
+const paymentStatusLabels = {
+  pending: 'Pending',
+  paid: 'Paid',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+  done: 'Done',
+};
+
+const paymentStatusOptions = [
+  { value: 'paid', label: 'Paid' },
+  { value: 'done', label: 'Done' },
+];
 
 const formatDate = (value) => {
   if (!value) return '-';
@@ -27,7 +42,9 @@ const formatCurrency = (value) =>
 const Payments = () => {
   const [status, setStatus] = useState('');
   const [period, setPeriod] = useState('');
+  const { user } = useAuth();
   const qc = useQueryClient();
+  const canDecidePaymentStatus = user?.role === 'admin';
 
   const query = useMemo(() => {
     const params = new URLSearchParams({ limit: '50' });
@@ -42,26 +59,17 @@ const Payments = () => {
     { keepPreviousData: true, staleTime: 0, refetchOnMount: 'always' }
   );
 
-  const markPaid = useMutation(
-    (paymentId) => api.patch(`/payments/${paymentId}/mark-paid`, {}),
-    {
-      onSuccess: () => {
-        toast.success('Payment marked as paid');
-        qc.invalidateQueries('payments');
-        qc.invalidateQueries('dashboard-stats');
-        qc.invalidateQueries('dept-salary');
-      },
-    }
-  );
-
   const updateStatus = useMutation(
     ({ paymentId, newStatus }) => api.patch(`/payments/${paymentId}/status`, { status: newStatus }),
     {
       onSuccess: (resp) => {
         toast.success(resp.data.message);
+        qc.invalidateQueries(['payments']);
         qc.invalidateQueries('payments');
         qc.invalidateQueries('dashboard-stats');
         qc.invalidateQueries('dept-salary');
+        qc.refetchQueries('dashboard-stats', { active: true });
+        qc.refetchQueries('dept-salary', { active: true });
       },
       onError: (err) => {
         toast.error(err.response?.data?.message || 'Failed to update status');
@@ -72,8 +80,8 @@ const Payments = () => {
   const payments = data?.data || [];
   const total = data?.pagination?.total || payments.length;
   const totalAmount = data?.pagination?.total_amount || payments.reduce((sum, pay) => sum + Number(pay.net_amount || 0), 0);
-  const paidCount = payments.filter(pay => pay.payment_status === 'paid').length;
-  const pendingCount = payments.filter(pay => pay.payment_status === 'pending').length;
+  const paidCount = payments.filter(pay => ['paid', 'done'].includes(pay.payment_status)).length;
+  const pendingCount = payments.filter(pay => ['pending', 'paid'].includes(pay.payment_status)).length;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -88,6 +96,7 @@ const Payments = () => {
             <option value="">All status</option>
             <option value="pending">Pending</option>
             <option value="paid">Paid</option>
+            <option value="done">Done</option>
             <option value="failed">Failed</option>
             <option value="cancelled">Cancelled</option>
           </select>
@@ -187,17 +196,30 @@ const Payments = () => {
                       <p className="text-xs text-gray-400">Base {formatCurrency(pay.base_amount)}</p>
                     </td>
                     <td className="py-3 pr-4">
-                      <select
-                        value={pay.payment_status}
-                        onChange={(e) => updateStatus.mutate({ paymentId: pay.id, newStatus: e.target.value })}
-                        disabled={updateStatus.isLoading}
-                        className={`text-xs px-2 py-1 rounded-full font-medium border-0 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer transition ${statusClass[pay.payment_status] || statusClass.cancelled}`}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="paid">Paid</option>
-                        <option value="failed">Failed</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
+                      {canDecidePaymentStatus ? (
+                        <select
+                          value={pay.payment_status}
+                          onChange={(e) => updateStatus.mutate({ paymentId: pay.id, newStatus: e.target.value })}
+                          disabled={updateStatus.isLoading}
+                          title="Admin decision"
+                          className={`text-xs px-2 py-1 rounded-full font-medium border-0 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer transition ${statusClass[pay.payment_status] || statusClass.cancelled}`}
+                        >
+                          {!paymentStatusOptions.some(option => option.value === pay.payment_status) && (
+                            <option value={pay.payment_status} disabled>
+                              {paymentStatusLabels[pay.payment_status] || pay.payment_status}
+                            </option>
+                          )}
+                          {paymentStatusOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className={`inline-flex text-xs px-2 py-1 rounded-full font-medium ${statusClass[pay.payment_status] || statusClass.cancelled}`}>
+                          {paymentStatusLabels[pay.payment_status] || pay.payment_status}
+                        </span>
+                      )}
                       {pay.paid_at && <p className="text-xs text-gray-400 mt-1">{formatDate(pay.paid_at)}</p>}
                     </td>
                   </motion.tr>

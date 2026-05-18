@@ -20,13 +20,21 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    if (err.code === 'ECONNABORTED' || err.message === 'Network Error') {
+      toast.error('Cannot connect to server. Please check if backend is running on port 8000.');
+      return Promise.reject(err);
+    }
+    
     const msg = err.response?.data?.message || 'Something went wrong';
+    
     if (err.response?.status === 401) {
       localStorage.removeItem('wt_token');
       window.location.href = '/login';
     } else if (err.response?.status !== 404) {
+      // Don't show toast for 404 errors
       toast.error(msg);
     }
+    
     return Promise.reject(err);
   }
 );

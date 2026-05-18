@@ -11,19 +11,14 @@ exports.getPayments = async (req, res, next) => {
     if (status)        { where += ' AND p.payment_status=?'; params.push(status); }
     if (employee_id)   { where += ' AND p.employee_id=?';    params.push(employee_id); }
     if (period)        { where += ' AND p.payment_period=?'; params.push(period); }
-    if (department_id) {
-      where += ' AND (e.department_id=? OR CAST(d.id AS CHAR)=CAST(? AS CHAR) OR d.name=?)';
-      params.push(department_id, department_id, department_id);
-    }
+    if (department_id) { where += ' AND e.department_id=?';  params.push(department_id); }
 
     const [rows] = await db.execute(
       `SELECT p.*, e.full_name, e.employee_code, e.daily_wage, e.department_id,
-              COALESCE(d.name, e.department_id) AS department_name
+              d.name AS department_name
        FROM payments p
        JOIN employees e ON e.id = p.employee_id
-       LEFT JOIN departments d
-         ON d.name = e.department_id
-         OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
+       LEFT JOIN departments d ON d.id = e.department_id
        ${where}
        ORDER BY p.created_at DESC
        LIMIT ${parseInt(limit)} OFFSET ${offset}`,
@@ -34,9 +29,6 @@ exports.getPayments = async (req, res, next) => {
       `SELECT COUNT(*) AS total, SUM(net_amount) AS total_amount
        FROM payments p
        JOIN employees e ON e.id = p.employee_id
-       LEFT JOIN departments d
-         ON d.name = e.department_id
-         OR CAST(d.id AS CHAR) = CAST(e.department_id AS CHAR)
        ${where}`, params
     );
 
@@ -144,19 +136,19 @@ exports.markPaid = async (req, res, next) => {
   try {
     const { transaction_ref } = req.body;
     await db.execute(
-      `UPDATE payments SET payment_status='paid', paid_at=NOW(), transaction_ref=?, paid_by=?
+      `UPDATE payments SET payment_status='done', paid_at=NOW(), transaction_ref=?, paid_by=?
        WHERE id=?`,
       [transaction_ref||null, req.user.id, req.params.id]
     );
-    res.json({ success: true, message: 'Payment marked as paid' });
+    res.json({ success: true, message: 'Payment marked as done' });
   } catch (err) { next(err); }
 };
 
-// PATCH /api/payments/:id/status — update payment status to any value
+// PATCH /api/payments/:id/status — update payment status (admin only - pending or done)
 exports.updatePaymentStatus = async (req, res, next) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['paid', 'done'];
+    const validStatuses = ['pending', 'done'];
     
     if (!status || !validStatuses.includes(status)) {
       return res.status(400).json({ 
@@ -165,11 +157,22 @@ exports.updatePaymentStatus = async (req, res, next) => {
       });
     }
 
+    const [current] = await db.execute('SELECT payment_status, paid_at FROM payments WHERE id=?', [req.params.id]);
+    if (!current.length) {
+      return res.status(404).json({ success: false, message: 'Payment not found' });
+    }
+
     let query = 'UPDATE payments SET payment_status=?';
     const params = [status];
 
-    query += ', paid_at=COALESCE(paid_at, NOW()), paid_by=COALESCE(paid_by, ?)';
-    params.push(req.user.id);
+    if (status === 'done') {
+      if (!current[0].paid_at) {
+        query += ', paid_at=NOW(), paid_by=?';
+        params.push(req.user.id);
+      }
+    } else if (status === 'pending') {
+      query += ', paid_at=NULL, paid_by=NULL';
+    }
 
     query += ' WHERE id=?';
     params.push(req.params.id);
@@ -190,7 +193,7 @@ exports.getPendingSummary = async (req, res, next) => {
   try {
     const [rows] = await db.execute(
       `SELECT COUNT(*) AS count, COALESCE(SUM(net_amount),0) AS total
-       FROM payments WHERE payment_status IN ('pending','paid')`
+       FROM payments WHERE payment_status='pending'`
     );
     res.json({ success: true, data: rows[0] });
   } catch (err) { next(err); }

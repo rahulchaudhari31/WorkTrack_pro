@@ -7,23 +7,17 @@ import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 const statusClass = {
-  paid: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
   done: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
   pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
-  failed: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-  cancelled: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 };
 
 const paymentStatusLabels = {
   pending: 'Pending',
-  paid: 'Paid',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
   done: 'Done',
 };
 
-const paymentStatusOptions = [
-  { value: 'paid', label: 'Paid' },
+const getStatusOptions = () => [
+  { value: 'pending', label: 'Pending' },
   { value: 'done', label: 'Done' },
 ];
 
@@ -80,8 +74,8 @@ const Payments = () => {
   const payments = data?.data || [];
   const total = data?.pagination?.total || payments.length;
   const totalAmount = data?.pagination?.total_amount || payments.reduce((sum, pay) => sum + Number(pay.net_amount || 0), 0);
-  const paidCount = payments.filter(pay => ['paid', 'done'].includes(pay.payment_status)).length;
-  const pendingCount = payments.filter(pay => ['pending', 'paid'].includes(pay.payment_status)).length;
+  const pendingCount = payments.filter(pay => pay.payment_status === 'pending').length;
+  const doneCount = payments.filter(pay => pay.payment_status === 'done').length;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -95,10 +89,7 @@ const Payments = () => {
           <select value={status} onChange={e => setStatus(e.target.value)} className="input sm:w-40">
             <option value="">All status</option>
             <option value="pending">Pending</option>
-            <option value="paid">Paid</option>
             <option value="done">Done</option>
-            <option value="failed">Failed</option>
-            <option value="cancelled">Cancelled</option>
           </select>
           <select value={period} onChange={e => setPeriod(e.target.value)} className="input sm:w-40">
             <option value="">All periods</option>
@@ -116,7 +107,7 @@ const Payments = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card flex items-center gap-3">
           <div className="p-3 rounded-lg bg-primary-600">
             <CreditCard className="w-5 h-5 text-white" />
@@ -127,20 +118,29 @@ const Payments = () => {
           </div>
         </div>
         <div className="card flex items-center gap-3">
+          <div className="p-3 rounded-lg bg-yellow-500">
+            <Clock className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">Pending</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{pendingCount}</p>
+          </div>
+        </div>
+        <div className="card flex items-center gap-3">
           <div className="p-3 rounded-lg bg-green-500">
             <CheckCircle2 className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-sm text-gray-500">Paid Shown</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{paidCount}</p>
+            <p className="text-sm text-gray-500">Done</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{doneCount}</p>
           </div>
         </div>
         <div className="card flex items-center gap-3">
-          <div className="p-3 rounded-lg bg-orange-500">
+          <div className="p-3 rounded-lg bg-indigo-500">
             <IndianRupee className="w-5 h-5 text-white" />
           </div>
           <div>
-            <p className="text-sm text-gray-500">{pendingCount ? 'Filtered Total' : 'Total Amount'}</p>
+            <p className="text-sm text-gray-500">Total Amount</p>
             <p className="text-2xl font-bold text-gray-900 dark:text-white">{formatCurrency(totalAmount)}</p>
           </div>
         </div>
@@ -197,30 +197,33 @@ const Payments = () => {
                     </td>
                     <td className="py-3 pr-4">
                       {canDecidePaymentStatus ? (
-                        <select
-                          value={pay.payment_status}
-                          onChange={(e) => updateStatus.mutate({ paymentId: pay.id, newStatus: e.target.value })}
-                          disabled={updateStatus.isLoading}
-                          title="Admin decision"
-                          className={`text-xs px-2 py-1 rounded-full font-medium border-0 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer transition ${statusClass[pay.payment_status] || statusClass.cancelled}`}
-                        >
-                          {!paymentStatusOptions.some(option => option.value === pay.payment_status) && (
-                            <option value={pay.payment_status} disabled>
-                              {paymentStatusLabels[pay.payment_status] || pay.payment_status}
-                            </option>
-                          )}
-                          {paymentStatusOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="space-y-1">
+                          <select
+                            value={pay.payment_status === 'paid' ? 'done' : pay.payment_status}
+                            onChange={(e) => {
+                              if (window.confirm(`Change payment status to "${paymentStatusLabels[e.target.value]}"?`)) {
+                                updateStatus.mutate({ paymentId: pay.id, newStatus: e.target.value });
+                              }
+                            }}
+                            disabled={updateStatus.isLoading}
+                            className={`text-xs px-3 py-1.5 rounded-full font-medium border-0 focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer transition w-full ${statusClass[pay.payment_status === 'paid' ? 'done' : pay.payment_status] || statusClass.pending}`}
+                          >
+                            {getStatusOptions().map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          {pay.paid_at && <p className="text-xs text-gray-400">Paid: {formatDate(pay.paid_at)}</p>}
+                        </div>
                       ) : (
-                        <span className={`inline-flex text-xs px-2 py-1 rounded-full font-medium ${statusClass[pay.payment_status] || statusClass.cancelled}`}>
-                          {paymentStatusLabels[pay.payment_status] || pay.payment_status}
-                        </span>
+                        <div>
+                          <span className={`inline-flex text-xs px-3 py-1.5 rounded-full font-medium ${statusClass[pay.payment_status === 'paid' ? 'done' : pay.payment_status] || statusClass.pending}`}>
+                            {paymentStatusLabels[pay.payment_status === 'paid' ? 'done' : pay.payment_status] || pay.payment_status}
+                          </span>
+                          {pay.paid_at && <p className="text-xs text-gray-400 mt-1">Paid: {formatDate(pay.paid_at)}</p>}
+                        </div>
                       )}
-                      {pay.paid_at && <p className="text-xs text-gray-400 mt-1">{formatDate(pay.paid_at)}</p>}
                     </td>
                   </motion.tr>
                 ))}
